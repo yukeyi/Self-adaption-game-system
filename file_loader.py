@@ -117,9 +117,112 @@ def abstract_feature(user,timestep):
 
     return feature
 
-'''
-##########################  test code  ##########################
+def compute_reward(user):
+    alpha1 = 1
+    alpha2 = 1
+    alpha3 = 1
+    alpha4 = 1
 
+    reward = [0]*(int(len(user['money_seq'])/10))
+    charge = [0] * (int(len(user['money_seq']) / 10))
+    for iter in range(len(user['pay_point'])):
+        charge[int(user['pay_point'][iter]/10)] += user['pay_money'][iter]
+    for iter in range(len(charge)-1):
+        reward[iter] = charge[iter+1]*alpha1
+
+    if((user['active_days']>=4 and user['money_left']>10000) or (user['active_days']<4 and user['money_left']<=10000)):
+        remain = 1
+    else:
+        remain = 0
+    reward[-1] = alpha2*user['active_days'] + alpha3*user['online_minutes'] + alpha4*remain
+
+    return reward
+
+def compute_action(user):
+    charge = [0]*(int(len(user['money_seq'])/10))
+    win = [0]*(int(len(user['money_seq']) / 10))
+
+    for iter in range(len(user['pay_point'])):
+        charge[int(user['pay_point'][iter]/10)] += user['pay_money'][iter]
+
+    win[0] = user['money_seq'][9]
+    for iter in range(9,len(user['money_seq'])-1,10):
+        win[int((iter+1)/10)] = user['money_seq'][iter+10] - user['money_seq'][iter]
+
+    for iter in range(0,len(win)):
+        temp = max(user['money_seq'][10 * iter:10 * iter + 10])
+        if(temp == 0):
+            win[iter] = 0
+        else:
+            win[iter] = (win[iter]-charge[iter])/temp
+
+    return win
+
+def action_distribution(data):
+    #### test maxnum and minnum ####
+    maxnum = 0
+    minnum = 0
+    for user in data:
+        temp = compute_action(user)
+        tempmax = max(temp)
+        tempmin = min(temp)
+        if(tempmax>1):
+            print(tempmax)
+        if(tempmin<-10):
+            print(tempmin)
+        maxnum = max(maxnum,tempmax)
+        minnum = min(minnum,tempmin)
+        if(max(temp)>1):
+            print()
+    print(maxnum)
+    print(minnum)
+
+    #### test macro distribution ####
+    dist = [0]*22
+    for user in data:
+        temp = compute_action(user)
+        for item in temp:
+            if(item<-20):
+                item = -20
+            dist[int(item)+20]+=1
+    print(dist)
+
+    #### test micro distribution ####
+    dist = [0]*31
+    for user in data:
+        temp = compute_action(user)
+        for item in temp:
+            if(item>=-1):
+                dist[int((item+1)*10)]+=1
+    print(dist)
+    return 1
+
+'''
+#########################  test code for compute_reward  ##########################
+data = load_data()
+count = 1
+for user in data:
+    if(count == 760):
+        b = 1
+    reward = compute_reward(user)
+    print(count)
+    count+=1
+
+
+#########################  test code for action_distribution  ##########################
+data = load_data()
+action_distribution(data)
+
+
+#########################  test code for compute_action  ##########################
+user = {}
+user['money_seq'] = [2,5,10,1,200,400,100,50,60,600,1000,3000,500,15000,10000,6000,4000,6000,5000,200]
+user['pay_point'] = [3,10,12]
+user['pay_money'] = [200,3000,14000]
+action = compute_action(user)
+
+
+#########################  test code for abstract_feature  ##########################
 user = {}
 user['money_seq'] = [2,5,10,1,200,400,100,50,60,600,1000,3000]
 user['pay_point'] = [3,10]
