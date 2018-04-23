@@ -31,7 +31,11 @@ def load_data():
             if(user[now][0] == 'P'):
                 length = len(single_data['pay_point'])
                 single_data['pay_point'].append(now-8-length)
-                single_data['pay_money'].append(int(user[now+1])-int(user[now-1]))
+                if(now != 7):
+                    single_data['pay_money'].append(max(int(user[now+1])-int(user[now-1]),10))
+                else:
+                    single_data['pay_money'].append(int(user[now + 1]))
+
             else:
                 single_data['money_seq'].append(int(user[now]))
             now+=1

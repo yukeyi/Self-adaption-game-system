@@ -54,6 +54,7 @@ class DQN():
           for iter in range(0,len(actionlist)):
               self.replay_buffer.append([statelist[iter],statelist[iter+1],actionlist[iter],rewardlist[iter]])
 
+      pp.rewardNormalization(self.replay_buffer)
       #print(len(self.replay_buffer))
       return
 
@@ -64,7 +65,6 @@ class DQN():
       self.model.add(Dense(self.layer2_dim))
       self.model.add(Activation('sigmoid'))
       self.model.add(Dense(self.action_dim))
-      self.model.add(Activation('sigmoid'))
 
       myOptimizer = keras.optimizers.Adam(lr=self.learning_rate)
       self.model.compile(loss=[self.my_loss_action], optimizer=myOptimizer)
@@ -100,6 +100,15 @@ class DQN():
 
           # np.array([[1,2],[2,3],[9,3],[7,4]])
           self.model.fit(np.array(state_batch), np.transpose([action_batch,y_batch]), epochs=self.miniepo, batch_size=self.batch_size)
+
+  def show_data(self):
+      f1 = open('state_data', 'a')
+      f2 = open('reward_data','a')
+      for item in self.replay_buffer:
+          f1.write(str(item[0]))
+          f1.write('\n')
+          f2.write(str(item[3]))
+          f2.write('\n')
 
   def explo_greedy_action(self,states):
       return

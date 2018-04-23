@@ -1,4 +1,5 @@
 from DQN import DQN
 
 agent = DQN()
-agent.train_Q_network()
+#agent.show_data()
+#agent.train_Q_network()

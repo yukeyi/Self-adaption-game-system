@@ -48,7 +48,7 @@ def abstract_feature(user,timestep):
     if(addflag == 1):
         user['pay_point'].pop()
 
-    F_max = max(seq)
+    F_max = math.log10(max(seq)+1.0)
 
     F_var = math.log10(np.array(seq).var()+0.001)
 
@@ -59,14 +59,14 @@ def abstract_feature(user,timestep):
         F_period += 1
     F_period += 1
 
-    F_final = seq[-1]
+    F_final = math.log10(seq[-1]+1.0)
 
     F_chargerate = F_chargemoney/(F_final+F_chargemoney+0.001)
 
     F_data = []
     for i in range(10):
         sliceseq = seq[int(i*timestep/10):int((i+1)*timestep/10)]
-        F_data.append(sum(sliceseq)*10/timestep)
+        F_data.append(math.log10(sum(sliceseq)*10/timestep+1.0))
 
     feature = [
                   F_step,
@@ -82,7 +82,7 @@ def abstract_feature(user,timestep):
 def compute_reward(user):
     alpha1 = 1
     alpha2 = 1
-    alpha3 = 1
+    alpha3 = 0.05
     alpha4 = 1
 
     reward = [0]*(int(len(user['money_seq'])/10))
@@ -90,7 +90,7 @@ def compute_reward(user):
     for iter in range(len(user['pay_point'])):
         charge[int(user['pay_point'][iter]/10)] += user['pay_money'][iter]
     for iter in range(len(charge)-1):
-        reward[iter] = charge[iter+1]*alpha1
+        reward[iter] = math.log10(charge[iter+1]+1.0)*alpha1
 
     if((user['active_days']>=4 and user['money_left']>10000) or (user['active_days']<4 and user['money_left']<=10000)):
         remain = 1
@@ -99,6 +99,15 @@ def compute_reward(user):
     reward[-1] = alpha2*user['active_days'] + alpha3*user['online_minutes'] + alpha4*remain
 
     return reward
+
+# check point: -1 -0.9 -0.8 ... 0.9 1
+def convert_action(num):
+    if(num < -1):
+        return 0
+    elif(num > 1):
+        return 21
+    else:
+        return int((num+1.1)*10)
 
 def compute_action(user):
     charge = [0]*(int(len(user['money_seq'])/10))
@@ -114,9 +123,9 @@ def compute_action(user):
     for iter in range(0,len(win)):
         temp = max(user['money_seq'][10 * iter:10 * iter + 10])
         if(temp == 0):
-            win[iter] = 0
+            win[iter] = convert_action(0)
         else:
-            win[iter] = (win[iter]-charge[iter])/temp
+            win[iter] = convert_action((win[iter]-charge[iter])/temp)
 
     return win
 
@@ -159,8 +168,19 @@ def action_distribution(data):
     print(dist)
     return 1
 
+def rewardNormalization(data):
+    #count = 0
+    #allreward = []
+    #for item in data:
+    #    allreward.append(item[3])
+    #    if(item[3]>20):
+    #        count += 1
 
-
+    #mean = np.mean(allreward)
+    #max = np.max(allreward)
+    for iter in range(len(data)):
+        #data[iter][3] = (data[iter][3]-mean)/max
+        data[iter][3] = data[iter][3]/20
 
 '''
 #########################  test code for compute_reward  ##########################
