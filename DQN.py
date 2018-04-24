@@ -23,10 +23,17 @@ class DQN():
       self.layer1_dim = 32
       self.layer2_dim = 32
       self.data = []
-      self.learning_rate = 0.001
-      self.batch_size = 4
-      self.gamma = 0.8
-      self.miniepo = 10
+      self.learning_rate = 0.00005
+      self.batch_size = 32
+      self.train_size = 32000
+      self.gamma = 0.95
+      self.epoch = 10000
+      self.pretrain = True
+      self.log_filepath = 'log/pretrain'#/tmp/DQN_log_SGD_0.05_NoPretrain'
+      self.tensorboard = True
+      self.optimizer = 'adam'
+      self.load_model_name = ''
+      self.save = True
 
       self.create_Q_network()
 
@@ -66,8 +73,12 @@ class DQN():
       self.model.add(Activation('sigmoid'))
       self.model.add(Dense(self.action_dim))
 
-      myOptimizer = keras.optimizers.Adam(lr=self.learning_rate)
+      if(self.optimizer == 'adam'):
+          myOptimizer = keras.optimizers.Adam(lr=self.learning_rate)
+      elif(self.optimizer == 'sgd'):
+          myOptimizer = keras.optimizers.SGD(lr=self.learning_rate, momentum=0., decay=0., nesterov=False)
       self.model.compile(loss=[self.my_loss_action], optimizer=myOptimizer)
+      self.model.summary()
 
 
   def my_loss_action(self, y_true, y_pred):
@@ -81,25 +92,44 @@ class DQN():
       Q_value = tf.reduce_sum(y_pred*onehot_action,1)
       return tf.reduce_mean(tf.square(Q_true - Q_value))
 
+  def load_model(self):
+      if(self.load_model_name != ''):
+          self.model.load_weights('model/'+ self.load_model_name)
+
+  def save_model(self,name):
+      self.model.save_weights('model/'+ name)
+
   def train_Q_network(self):
-      while(1):
-          minibatch = random.sample(self.replay_buffer, self.batch_size)
-          state_batch = [data[0] for data in minibatch]
-          next_state_batch = [data[1] for data in minibatch]
-          action_batch = [data[2] for data in minibatch]
-          reward_batch = [data[3] for data in minibatch]
+      #while(1):
+      minibatch = random.sample(self.replay_buffer, self.train_size)
+      state_batch = [data[0] for data in minibatch]
+      next_state_batch = [data[1] for data in minibatch]
+      action_batch = [data[2] for data in minibatch]
+      reward_batch = [data[3] for data in minibatch]
 
-          y_batch = [self.gamma]*self.batch_size
-          for iter in range(0, self.batch_size):
-              if minibatch[iter][1] == 0:
-                  y_batch[iter] = 0
-                  next_state_batch[iter] = [0]*self.state_dim
+      y_batch = [self.gamma]*self.train_size
+      for iter in range(0, self.train_size):
+          if minibatch[iter][1] == 0:
+              y_batch[iter] = 0
+              next_state_batch[iter] = [0]*self.state_dim
 
-          Q_value_batch = self.action_value(next_state_batch)
-          y_batch = y_batch*Q_value_batch+reward_batch
+      Q_value_batch = self.action_value(next_state_batch)
+      y_batch = y_batch*Q_value_batch+reward_batch
+      if(self.pretrain == True):
+          for iter in range(self.train_size):
+              y_batch[iter] = 0
+          self.epoch = 200
 
-          # np.array([[1,2],[2,3],[9,3],[7,4]])
-          self.model.fit(np.array(state_batch), np.transpose([action_batch,y_batch]), epochs=self.miniepo, batch_size=self.batch_size)
+      self.load_model()
+      if(self.tensorboard):
+          tb_cb = keras.callbacks.TensorBoard(log_dir=self.log_filepath, write_images=1, histogram_freq=1)
+          self.model.fit(np.array(state_batch), np.transpose([action_batch,y_batch]),callbacks=[tb_cb], verbose=2,epochs=self.epoch, batch_size=self.batch_size)
+      else:
+          self.model.fit(np.array(state_batch), np.transpose([action_batch,y_batch]), verbose=2,epochs=self.epoch, batch_size=self.batch_size)
+
+      if(self.save):
+          self.save_model("pretrain")
+
 
   def show_data(self):
       f1 = open('state_data', 'a')

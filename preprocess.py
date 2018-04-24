@@ -47,26 +47,33 @@ def abstract_feature(user,timestep):
             break
     if(addflag == 1):
         user['pay_point'].pop()
+    F_uptime /= F_step
+    F_downtime /= F_step
 
     F_max = math.log10(max(seq)+1.0)
 
-    F_var = math.log10(np.array(seq).var()+0.001)
+    if(min(seq)<0):
+        wer = 1
 
-    F_mean = np.array(seq).mean()
+    F_var = np.log(np.array(seq)+1.0).var()
 
-    F_period = 0
-    while(F_period < len(user['pay_point']) and user['pay_point'][F_period]<timestep-1):
-        F_period += 1
-    F_period += 1
+    F_mean = np.log(np.array(seq)+1.0).mean()
 
-    F_final = math.log10(seq[-1]+1.0)
+    F_period = F_step / (F_chargetime+1)
+
+    F_final = seq[-1]
 
     F_chargerate = F_chargemoney/(F_final+F_chargemoney+0.001)
+
+    F_final = math.log10(F_final+1.0)
+    F_chargemoney = math.log10(F_chargemoney+1.0)
 
     F_data = []
     for i in range(10):
         sliceseq = seq[int(i*timestep/10):int((i+1)*timestep/10)]
         F_data.append(math.log10(sum(sliceseq)*10/timestep+1.0))
+
+    F_step /= 5
 
     feature = [
                   F_step,

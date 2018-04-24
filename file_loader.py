@@ -15,7 +15,7 @@ def load_data():
             firstTime = False
             continue
         #print(userId)
-        print(count)
+        #print(count)
         count+=1
         single_data['id'] = int(user[1])
         single_data['pay_times'] = int(user[2])
@@ -37,7 +37,7 @@ def load_data():
                     single_data['pay_money'].append(int(user[now + 1]))
 
             else:
-                single_data['money_seq'].append(int(user[now]))
+                single_data['money_seq'].append(max(int(user[now]),0))
             now+=1
 
         if(repair):
