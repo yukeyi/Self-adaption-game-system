@@ -10,6 +10,46 @@ from keras.layers import LSTM, Embedding
 from keras.layers import Merge
 from collections import deque
 
+
+
+state_batch = []
+next_state_batch = []
+action_batch = []
+reward_batch = []
+y_batch = []
+
+gamma = 0
+train_size = 0
+state_dim = 0
+#parameters = [gamma, train_size, state_dim]
+
+class Synchronize(keras.callbacks.Callback):
+    def on_train_begin(self, logs={}):
+        a = 1
+
+    def on_batch_end(self, batch, logs={}):
+        a = 1
+
+    def on_epoch_end(self, epoch, logs={}):
+        global state_batch
+        global next_state_batch
+        global action_batch
+        global reward_batch
+        global y_batch
+        global gamma
+        global train_size
+        global state_dim
+
+        y_batch = [gamma] * train_size
+        for iter in range(0, train_size):
+            if next_state_batch[iter] == 0:
+                y_batch[iter] = 0
+                next_state_batch[iter] = [0] * state_dim
+        Q_value_batch = np.max(self.model.predict(np.array(next_state_batch), verbose=0), 1)
+        y_batch = y_batch * Q_value_batch + reward_batch
+        #print(y_batch[0:3])
+
+
 class DQN():
   # DQN Agent
   def __init__(self):
@@ -23,16 +63,18 @@ class DQN():
       self.layer1_dim = 32
       self.layer2_dim = 32
       self.data = []
-      self.learning_rate = 0.00005
+      self.learning_rate = 0.001
       self.batch_size = 32
-      self.train_size = 32000
+      self.train_size = 26912
+      self.valid_size = 26912
       self.gamma = 0.95
-      self.epoch = 10000
-      self.pretrain = True
-      self.log_filepath = 'log/pretrain'#/tmp/DQN_log_SGD_0.05_NoPretrain'
+      self.epoch = 100000
+      self.pretrain = False
+      self.log_filepath = 'log/AdamWhole'#/tmp/DQN_log_SGD_0.05_NoPretrain'
       self.tensorboard = True
       self.optimizer = 'adam'
-      self.load_model_name = ''
+      self.load_model_name = ''#'pretrain'
+      self.save_model_name = 'adam_whole'
       self.save = True
 
       self.create_Q_network()
@@ -96,39 +138,58 @@ class DQN():
       if(self.load_model_name != ''):
           self.model.load_weights('model/'+ self.load_model_name)
 
-  def save_model(self,name):
-      self.model.save_weights('model/'+ name)
+  def save_model(self):
+      self.model.save_weights('model/'+ self.save_model_name)
 
   def train_Q_network(self):
-      #while(1):
-      minibatch = random.sample(self.replay_buffer, self.train_size)
+
+      #print(len(self.replay_buffer))
+      global state_batch
+      global next_state_batch
+      global action_batch
+      global reward_batch
+      global y_batch
+      global gamma
+      global train_size
+      global state_dim
+
+      gamma = self.gamma
+      train_size = self.train_size+self.valid_size
+      state_dim = self.state_dim
+      minibatch = random.sample(self.replay_buffer, self.train_size+self.valid_size)
+
       state_batch = [data[0] for data in minibatch]
       next_state_batch = [data[1] for data in minibatch]
       action_batch = [data[2] for data in minibatch]
       reward_batch = [data[3] for data in minibatch]
 
-      y_batch = [self.gamma]*self.train_size
-      for iter in range(0, self.train_size):
-          if minibatch[iter][1] == 0:
+      y_batch = [gamma] * (self.train_size+self.valid_size)
+      for iter in range(0, (self.train_size+self.valid_size)):
+          if next_state_batch[iter] == 0:
               y_batch[iter] = 0
-              next_state_batch[iter] = [0]*self.state_dim
+              next_state_batch[iter] = [0] * state_dim
+      Q_value_batch = np.max(self.model.predict(np.array(next_state_batch), verbose=0), 1)
+      y_batch = y_batch * Q_value_batch + reward_batch
 
-      Q_value_batch = self.action_value(next_state_batch)
-      y_batch = y_batch*Q_value_batch+reward_batch
       if(self.pretrain == True):
-          for iter in range(self.train_size):
+          for iter in range(self.train_size+self.valid_size):
               y_batch[iter] = 0
           self.epoch = 200
+          self.model.fit(np.array(state_batch), np.transpose([action_batch, y_batch]), verbose=2, epochs=self.epoch, batch_size=self.batch_size)
+          self.save_model()
+          return
 
       self.load_model()
       if(self.tensorboard):
           tb_cb = keras.callbacks.TensorBoard(log_dir=self.log_filepath, write_images=1, histogram_freq=1)
-          self.model.fit(np.array(state_batch), np.transpose([action_batch,y_batch]),callbacks=[tb_cb], verbose=2,epochs=self.epoch, batch_size=self.batch_size)
+          synchro_cb = Synchronize()
+          self.model.fit(np.array(state_batch[:self.train_size]), np.transpose([action_batch[:self.train_size],y_batch[:self.train_size]]), validation_data=(state_batch[self.train_size:],np.transpose([action_batch[self.train_size:],y_batch[self.train_size:]])), callbacks=[tb_cb,synchro_cb], verbose=2,epochs=self.epoch, batch_size=self.batch_size)
       else:
-          self.model.fit(np.array(state_batch), np.transpose([action_batch,y_batch]), verbose=2,epochs=self.epoch, batch_size=self.batch_size)
+          synchro_cb = Synchronize()
+          self.model.fit(np.array(state_batch[:self.train_size]), np.transpose([action_batch[:self.train_size],y_batch[:self.train_size]]), validation_data=(state_batch[self.train_size:],np.transpose([action_batch[self.train_size:],y_batch[self.train_size:]])), callbacks=[synchro_cb], verbose=2,epochs=self.epoch, batch_size=self.batch_size)
 
       if(self.save):
-          self.save_model("pretrain")
+          self.save_model()
 
 
   def show_data(self):
