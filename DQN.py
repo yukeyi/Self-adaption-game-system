@@ -4,8 +4,9 @@ import preprocess as pp
 import tensorflow as tf
 import keras
 import random
+import time
 from keras.models import Sequential
-from keras.layers.core import Dense, Activation
+from keras.layers.core import Dense, Activation, Dropout
 from keras.layers import LSTM, Embedding
 from keras.layers import Merge
 from collections import deque
@@ -63,19 +64,20 @@ class DQN():
       self.layer1_dim = 32
       self.layer2_dim = 32
       self.data = []
-      self.learning_rate = 0.001
+      self.learning_rate = 0.0001
       self.batch_size = 32
-      self.train_size = 26912
-      self.valid_size = 26912
+      self.train_size = 48000
+      self.valid_size = 5824
       self.gamma = 0.95
       self.epoch = 100000
+      self.dropout_rate = 0
       self.pretrain = False
-      self.log_filepath = 'log/AdamWhole'#/tmp/DQN_log_SGD_0.05_NoPretrain'
+      self.log_filepath = 'log/AdamWholePretrain/'+time.strftime("%Y%m%d%H%M%S",time.localtime(time.time())) #/tmp/DQN_log_SGD_0.05_NoPretrain'
       self.tensorboard = True
       self.optimizer = 'adam'
-      self.load_model_name = ''#'pretrain'
-      self.save_model_name = 'adam_whole'
-      self.save = True
+      self.load_model_name = 'pretrain'
+      self.save_model_name = 'pretrain'
+      self.save = False
 
       self.create_Q_network()
 
@@ -110,8 +112,12 @@ class DQN():
   def create_Q_network(self):
       self.model = Sequential()
       self.model.add(Dense(self.layer1_dim, input_shape=(self.state_dim,)))
+      if(self.dropout_rate != 0):
+          self.model.add(Dropout(self.dropout_rate))
       self.model.add(Activation('sigmoid'))
       self.model.add(Dense(self.layer2_dim))
+      if(self.dropout_rate != 0):
+          self.model.add(Dropout(self.dropout_rate))
       self.model.add(Activation('sigmoid'))
       self.model.add(Dense(self.action_dim))
 
@@ -156,6 +162,8 @@ class DQN():
       gamma = self.gamma
       train_size = self.train_size+self.valid_size
       state_dim = self.state_dim
+
+      random.seed(time.time())
       minibatch = random.sample(self.replay_buffer, self.train_size+self.valid_size)
 
       state_batch = [data[0] for data in minibatch]
@@ -174,19 +182,30 @@ class DQN():
       if(self.pretrain == True):
           for iter in range(self.train_size+self.valid_size):
               y_batch[iter] = 0
-          self.epoch = 200
-          self.model.fit(np.array(state_batch), np.transpose([action_batch, y_batch]), verbose=2, epochs=self.epoch, batch_size=self.batch_size)
+          self.epoch = 10
+          self.model.fit(np.array(state_batch), np.transpose([action_batch, y_batch]), verbose=1, epochs=self.epoch, batch_size=self.batch_size)
           self.save_model()
           return
 
+      #print(self.evaluate())
       self.load_model()
+      print(self.evaluate())
+
       if(self.tensorboard):
           tb_cb = keras.callbacks.TensorBoard(log_dir=self.log_filepath, write_images=1, histogram_freq=1)
           synchro_cb = Synchronize()
-          self.model.fit(np.array(state_batch[:self.train_size]), np.transpose([action_batch[:self.train_size],y_batch[:self.train_size]]), validation_data=(state_batch[self.train_size:],np.transpose([action_batch[self.train_size:],y_batch[self.train_size:]])), callbacks=[tb_cb,synchro_cb], verbose=2,epochs=self.epoch, batch_size=self.batch_size)
+          es_cb = keras.callbacks.EarlyStopping(monitor='val_loss', patience=10, verbose=0, mode='min')
+          self.model.fit(np.array(state_batch[:self.train_size]),
+                         np.transpose([action_batch[:self.train_size], y_batch[:self.train_size]]), validation_data=(
+              state_batch[self.train_size:], np.transpose([action_batch[self.train_size:], y_batch[self.train_size:]])),
+                         callbacks=[tb_cb, synchro_cb, es_cb], verbose=2, epochs=self.epoch, batch_size=self.batch_size)
       else:
           synchro_cb = Synchronize()
-          self.model.fit(np.array(state_batch[:self.train_size]), np.transpose([action_batch[:self.train_size],y_batch[:self.train_size]]), validation_data=(state_batch[self.train_size:],np.transpose([action_batch[self.train_size:],y_batch[self.train_size:]])), callbacks=[synchro_cb], verbose=2,epochs=self.epoch, batch_size=self.batch_size)
+          es_cb = keras.callbacks.EarlyStopping(monitor='val_loss', patience=10, verbose=0, mode='min')
+          self.model.fit(np.array(state_batch[:self.train_size]),
+                         np.transpose([action_batch[:self.train_size], y_batch[:self.train_size]]), validation_data=(
+              state_batch[self.train_size:], np.transpose([action_batch[self.train_size:], y_batch[self.train_size:]])),
+                         callbacks=[synchro_cb, es_cb], verbose=2, epochs=self.epoch, batch_size=self.batch_size)
 
       if(self.save):
           self.save_model()
@@ -209,3 +228,26 @@ class DQN():
 
   def action_value(self,states): # no exploration, just output highest Q_value
       return np.max(self.model.predict(np.array(states), verbose=0),1)
+
+  def evaluate(self):
+      global state_batch
+      global next_state_batch
+      global action_batch
+      global reward_batch
+
+      y_valid_batch = [gamma] * (self.train_size+self.valid_size)
+      for iter in range(0, (self.train_size+self.valid_size)):
+          if next_state_batch[iter] == 0:
+              y_valid_batch[iter] = 0
+              next_state_batch[iter] = [0] * state_dim
+      Q_value_batch = np.max(self.model.predict(np.array(next_state_batch), verbose=0), 1)
+      y_valid_batch = y_valid_batch * Q_value_batch + reward_batch
+
+      temp2 = self.model.evaluate(np.array(state_batch[self.train_size:]),
+                                  np.transpose([action_batch[self.train_size:], y_valid_batch[self.train_size:]]),
+                                  batch_size=self.batch_size)
+      temp1 = self.model.evaluate(np.array(state_batch[:self.train_size]),
+                                  np.transpose([action_batch[:self.train_size], y_valid_batch[:self.train_size]]),
+                                  batch_size=self.batch_size)
+
+      return (temp1,temp2)
