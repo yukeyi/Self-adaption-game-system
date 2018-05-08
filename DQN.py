@@ -12,26 +12,37 @@ from keras.layers import Merge
 from collections import deque
 
 
+save_best_only = True
 
 state_batch = []
 next_state_batch = []
 action_batch = []
 reward_batch = []
 y_batch = []
-
 gamma = 0
 train_size = 0
 state_dim = 0
-#parameters = [gamma, train_size, state_dim]
+
 
 class Synchronize(keras.callbacks.Callback):
+
     def on_train_begin(self, logs={}):
-        a = 1
+        self.min_val_loss = 10
 
     def on_batch_end(self, batch, logs={}):
         a = 1
 
     def on_epoch_end(self, epoch, logs={}):
+        global save_best_only
+        if(save_best_only):
+            if(self.min_val_loss > logs['val_loss']):
+                self.min_val_loss = logs['val_loss']
+                self.model.save_weights(
+                    'model/' + time.strftime("%Y%m%d%H%M%S", time.localtime(time.time())) + "epoch: " + str(epoch) + " val_loss" + str(logs['val_loss']))
+        else:
+            self.model.save_weights('model/'+time.strftime("%Y%m%d%H%M%S",time.localtime(time.time()))+"epoch: "+str(epoch))
+        #print(logs)
+
         global state_batch
         global next_state_batch
         global action_batch
@@ -64,12 +75,12 @@ class DQN():
       self.layer1_dim = 32
       self.layer2_dim = 32
       self.data = []
-      self.learning_rate = 0.0001
+      self.learning_rate = 0.0002
       self.batch_size = 32
       self.train_size = 48000
       self.valid_size = 5824
       self.gamma = 0.95
-      self.epoch = 100000
+      self.epoch = 100
       self.dropout_rate = 0
       self.pretrain = False
       self.log_filepath = 'log/AdamWholePretrain/'+time.strftime("%Y%m%d%H%M%S",time.localtime(time.time())) #/tmp/DQN_log_SGD_0.05_NoPretrain'
@@ -77,7 +88,7 @@ class DQN():
       self.optimizer = 'adam'
       self.load_model_name = 'pretrain'
       self.save_model_name = 'pretrain'
-      self.save = False
+      self.save = True
 
       self.create_Q_network()
 
@@ -145,7 +156,9 @@ class DQN():
           self.model.load_weights('model/'+ self.load_model_name)
 
   def save_model(self):
-      self.model.save_weights('model/'+ self.save_model_name)
+      self.model.save_weights(
+          'model/' + time.strftime("%Y%m%d%H%M%S", time.localtime(time.time())) + "epoch: " + str(
+              self.epoch) + " final")
 
   def train_Q_network(self):
 
@@ -194,7 +207,9 @@ class DQN():
       if(self.tensorboard):
           tb_cb = keras.callbacks.TensorBoard(log_dir=self.log_filepath, write_images=1, histogram_freq=1)
           synchro_cb = Synchronize()
-          es_cb = keras.callbacks.EarlyStopping(monitor='val_loss', patience=10, verbose=0, mode='min')
+          es_cb = keras.callbacks.EarlyStopping(monitor='val_loss', patience=100, verbose=0, mode='min')
+          #sv_cb = keras.callbacks.ModelCheckpoint('model/'+time.strftime("%Y%m%d%H%M%S",time.localtime(time.time())), monitor='val_loss', verbose=1, save_best_only=False,
+          #                                        save_weights_only=False, mode='min', period=1)
           self.model.fit(np.array(state_batch[:self.train_size]),
                          np.transpose([action_batch[:self.train_size], y_batch[:self.train_size]]), validation_data=(
               state_batch[self.train_size:], np.transpose([action_batch[self.train_size:], y_batch[self.train_size:]])),
@@ -206,10 +221,8 @@ class DQN():
                          np.transpose([action_batch[:self.train_size], y_batch[:self.train_size]]), validation_data=(
               state_batch[self.train_size:], np.transpose([action_batch[self.train_size:], y_batch[self.train_size:]])),
                          callbacks=[synchro_cb, es_cb], verbose=2, epochs=self.epoch, batch_size=self.batch_size)
-
-      if(self.save):
+      if (self.save):
           self.save_model()
-
 
   def show_data(self):
       f1 = open('state_data', 'a')
