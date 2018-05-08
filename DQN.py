@@ -5,6 +5,7 @@ import tensorflow as tf
 import keras
 import random
 import time
+import copy
 from keras.models import Sequential
 from keras.layers.core import Dense, Activation, Dropout
 from keras.layers import LSTM, Embedding
@@ -33,6 +34,7 @@ class Synchronize(keras.callbacks.Callback):
         a = 1
 
     def on_epoch_end(self, epoch, logs={}):
+        '''
         global save_best_only
         if(save_best_only):
             if(self.min_val_loss > logs['val_loss']):
@@ -42,6 +44,7 @@ class Synchronize(keras.callbacks.Callback):
         else:
             self.model.save_weights('model/'+time.strftime("%Y%m%d%H%M%S",time.localtime(time.time()))+"epoch: "+str(epoch))
         #print(logs)
+        '''
 
         global state_batch
         global next_state_batch
@@ -75,12 +78,12 @@ class DQN():
       self.layer1_dim = 32
       self.layer2_dim = 32
       self.data = []
-      self.learning_rate = 0.0002
+      self.learning_rate = 0.001
       self.batch_size = 32
       self.train_size = 48000
       self.valid_size = 5824
       self.gamma = 0.95
-      self.epoch = 100
+      self.epoch = 1000
       self.dropout_rate = 0
       self.pretrain = False
       self.log_filepath = 'log/AdamWholePretrain/'+time.strftime("%Y%m%d%H%M%S",time.localtime(time.time())) #/tmp/DQN_log_SGD_0.05_NoPretrain'
@@ -88,6 +91,7 @@ class DQN():
       self.optimizer = 'adam'
       self.load_model_name = 'pretrain'
       self.save_model_name = 'pretrain'
+      self.patience = 1000
       self.save = True
 
       self.create_Q_network()
@@ -100,12 +104,18 @@ class DQN():
 
       self.get_data()
 
+      random.seed(time.time())
+      self.minibatch = random.sample(self.replay_buffer, self.train_size+self.valid_size)
+
 
   def get_data(self):
       self.data = fl.load_data()
       for user in self.data:
           actionlist = pp.compute_action(user)
           rewardlist = pp.compute_reward(user)
+          accumulate_rewardlist = copy.deepcopy(rewardlist)
+          for iter in range(len(rewardlist)-2,-1,-1):
+              accumulate_rewardlist[iter] += self.gamma*accumulate_rewardlist[iter+1]
           statelist = []
           length = len(user['money_seq'])
           for timestep in range(10, length + 1, 10):
@@ -114,7 +124,7 @@ class DQN():
           # assert (len(actionlist) == len(rewardlist) and len(actionlist) == len(statelist))
           statelist.append(0)
           for iter in range(0,len(actionlist)):
-              self.replay_buffer.append([statelist[iter],statelist[iter+1],actionlist[iter],rewardlist[iter]])
+              self.replay_buffer.append([statelist[iter],statelist[iter+1],actionlist[iter],rewardlist[iter],accumulate_rewardlist[iter]])
 
       pp.rewardNormalization(self.replay_buffer)
       #print(len(self.replay_buffer))
@@ -160,6 +170,35 @@ class DQN():
           'model/' + time.strftime("%Y%m%d%H%M%S", time.localtime(time.time())) + "epoch: " + str(
               self.epoch) + " final")
 
+  def metrics_test(self, filename):
+      self.load_model_name = filename
+      self.load_model()
+
+      global state_batch
+      global action_batch
+      state_batch = [data[0] for data in self.minibatch]
+      action_batch = [data[2] for data in self.minibatch]
+      acc_reward_batch = [data[4] for data in self.minibatch]
+
+      predict_action_batch = self.action(state_batch)
+
+      action_distribution = [0]*22
+      for item in predict_action_batch:
+          action_distribution[item] += 1
+
+      diff_distribution = [0]*22
+      reward_sum_distribution = [0]*22
+      for iter in range(len(predict_action_batch)):
+          temp = abs(action_batch[iter]-predict_action_batch[iter])
+          diff_distribution[temp] += 1
+          reward_sum_distribution[temp] += acc_reward_batch[iter]
+
+      reward_mean_distribution = np.array(reward_sum_distribution)/(np.array(diff_distribution)+1)
+      score = 0
+      for iter in range(22):
+          score += reward_mean_distribution[iter]/(iter+1)
+      return action_distribution, diff_distribution, reward_mean_distribution, score
+
   def train_Q_network(self):
 
       #print(len(self.replay_buffer))
@@ -176,13 +215,10 @@ class DQN():
       train_size = self.train_size+self.valid_size
       state_dim = self.state_dim
 
-      random.seed(time.time())
-      minibatch = random.sample(self.replay_buffer, self.train_size+self.valid_size)
-
-      state_batch = [data[0] for data in minibatch]
-      next_state_batch = [data[1] for data in minibatch]
-      action_batch = [data[2] for data in minibatch]
-      reward_batch = [data[3] for data in minibatch]
+      state_batch = [data[0] for data in self.minibatch]
+      next_state_batch = [data[1] for data in self.minibatch]
+      action_batch = [data[2] for data in self.minibatch]
+      reward_batch = [data[3] for data in self.minibatch]
 
       y_batch = [gamma] * (self.train_size+self.valid_size)
       for iter in range(0, (self.train_size+self.valid_size)):
@@ -207,7 +243,7 @@ class DQN():
       if(self.tensorboard):
           tb_cb = keras.callbacks.TensorBoard(log_dir=self.log_filepath, write_images=1, histogram_freq=1)
           synchro_cb = Synchronize()
-          es_cb = keras.callbacks.EarlyStopping(monitor='val_loss', patience=100, verbose=0, mode='min')
+          es_cb = keras.callbacks.EarlyStopping(monitor='val_loss', patience=self.patience, verbose=0, mode='min')
           #sv_cb = keras.callbacks.ModelCheckpoint('model/'+time.strftime("%Y%m%d%H%M%S",time.localtime(time.time())), monitor='val_loss', verbose=1, save_best_only=False,
           #                                        save_weights_only=False, mode='min', period=1)
           self.model.fit(np.array(state_batch[:self.train_size]),
@@ -216,7 +252,7 @@ class DQN():
                          callbacks=[tb_cb, synchro_cb, es_cb], verbose=2, epochs=self.epoch, batch_size=self.batch_size)
       else:
           synchro_cb = Synchronize()
-          es_cb = keras.callbacks.EarlyStopping(monitor='val_loss', patience=10, verbose=0, mode='min')
+          es_cb = keras.callbacks.EarlyStopping(monitor='val_loss', patience=self.patience, verbose=0, mode='min')
           self.model.fit(np.array(state_batch[:self.train_size]),
                          np.transpose([action_batch[:self.train_size], y_batch[:self.train_size]]), validation_data=(
               state_batch[self.train_size:], np.transpose([action_batch[self.train_size:], y_batch[self.train_size:]])),

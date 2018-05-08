@@ -187,7 +187,8 @@ def rewardNormalization(data):
     #max = np.max(allreward)
     for iter in range(len(data)):
         #data[iter][3] = (data[iter][3]-mean)/max
-        data[iter][3] = data[iter][3]/20
+        data[iter][3] = data[iter][3] / 20
+        data[iter][4] = data[iter][4] / 20
 
 '''
 #########################  test code for compute_reward  ##########################
