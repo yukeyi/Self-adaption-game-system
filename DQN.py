@@ -123,8 +123,13 @@ class DQN():
 
           # assert (len(actionlist) == len(rewardlist) and len(actionlist) == len(statelist))
           statelist.append(0)
+
+          #if(user['id']== 136914):
+          #  print(user['id'])
+          #  print(accumulate_rewardlist)
+
           for iter in range(0,len(actionlist)):
-              self.replay_buffer.append([statelist[iter],statelist[iter+1],actionlist[iter],rewardlist[iter],accumulate_rewardlist[iter]])
+              self.replay_buffer.append([statelist[iter],statelist[iter+1],actionlist[iter],rewardlist[iter],accumulate_rewardlist[iter],user['id'],iter])
 
       pp.rewardNormalization(self.replay_buffer)
       #print(len(self.replay_buffer))
@@ -198,6 +203,39 @@ class DQN():
       for iter in range(22):
           score += reward_mean_distribution[iter]/(iter+1)
       return action_distribution, diff_distribution, reward_mean_distribution, score
+
+
+  def choose_pole(self, filename):
+      self.load_model_name = filename
+      self.load_model()
+
+      global state_batch
+      global action_batch
+      state_batch = [data[0] for data in self.minibatch]
+      action_batch = [data[2] for data in self.minibatch]
+      acc_reward_batch = [data[4] for data in self.minibatch]
+      id_batch = [data[5] for data in self.minibatch]
+      position_batch = [data[6] for data in self.minibatch]
+
+
+      predict_action_batch = self.action(state_batch)
+
+      action_distribution = [0]*22
+      for item in predict_action_batch:
+          action_distribution[item] += 1
+
+      good_list = []
+      bad_list = []
+      for iter in range(len(predict_action_batch)):
+          temp = abs(action_batch[iter]-predict_action_batch[iter])
+          if(temp<3):
+              if(acc_reward_batch[iter]>2):
+                  good_list.append(([id_batch[iter],position_batch[iter]],acc_reward_batch[iter]))
+              elif(acc_reward_batch[iter]<0.1):
+                  bad_list.append(([id_batch[iter],position_batch[iter]],acc_reward_batch[iter]))
+
+      return good_list, bad_list
+
 
   def train_Q_network(self):
 
