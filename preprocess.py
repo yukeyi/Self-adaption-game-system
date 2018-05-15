@@ -88,9 +88,9 @@ def abstract_feature(user,timestep):
 
 def compute_reward(user):
     alpha1 = 1
-    alpha2 = 1
-    alpha3 = 0.05
-    alpha4 = 1
+    alpha2 = 0.5
+    alpha3 = 0.0002
+    alpha4 = 0.5
 
     reward = [0]*(int(len(user['money_seq'])/10))
     charge = [0] * (int(len(user['money_seq']) / 10))

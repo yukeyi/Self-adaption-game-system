@@ -6,6 +6,7 @@ import keras
 import random
 import time
 import copy
+import numpy
 from keras.models import Sequential
 from keras.layers.core import Dense, Activation, Dropout
 from keras.layers import LSTM, Embedding
@@ -34,7 +35,7 @@ class Synchronize(keras.callbacks.Callback):
         a = 1
 
     def on_epoch_end(self, epoch, logs={}):
-        '''
+
         global save_best_only
         if(save_best_only):
             if(self.min_val_loss > logs['val_loss']):
@@ -44,7 +45,6 @@ class Synchronize(keras.callbacks.Callback):
         else:
             self.model.save_weights('model/'+time.strftime("%Y%m%d%H%M%S",time.localtime(time.time()))+"epoch: "+str(epoch))
         #print(logs)
-        '''
 
         global state_batch
         global next_state_batch
@@ -86,11 +86,11 @@ class DQN():
       self.epoch = 1000
       self.dropout_rate = 0
       self.pretrain = False
-      self.log_filepath = 'log/AdamWholePretrain/'+time.strftime("%Y%m%d%H%M%S",time.localtime(time.time())) #/tmp/DQN_log_SGD_0.05_NoPretrain'
+      self.log_filepath = 'log/AdamWhole/'+time.strftime("%Y%m%d%H%M%S",time.localtime(time.time())) #/tmp/DQN_log_SGD_0.05_NoPretrain'
       self.tensorboard = True
       self.optimizer = 'adam'
-      self.load_model_name = 'pretrain'
-      self.save_model_name = 'pretrain'
+      self.load_model_name = ''
+      #self.save_model_name = 'pretrain'
       self.patience = 1000
       self.save = True
 
@@ -124,8 +124,10 @@ class DQN():
           # assert (len(actionlist) == len(rewardlist) and len(actionlist) == len(statelist))
           statelist.append(0)
 
-          #if(user['id']== 136914):
+          #if(user['id']== 136761):
           #  print(user['id'])
+          #  print(user['active_days'])
+          #  print(user['online_minutes'])
           #  print(accumulate_rewardlist)
 
           for iter in range(0,len(actionlist)):
@@ -205,6 +207,34 @@ class DQN():
       return action_distribution, diff_distribution, reward_mean_distribution, score
 
 
+  def metrics_validtest_fromfile(self, filename, datafilename):
+      self.load_model_name = filename
+      self.load_model()
+
+      state_batch = numpy.loadtxt(open(datafilename+"validata_state.csv", "rb"), delimiter=",", skiprows=0)
+      action_batch = numpy.loadtxt(open(datafilename+"validata_action.csv", "rb"), delimiter=",", skiprows=0)
+      acc_reward_batch = numpy.loadtxt(open(datafilename+"validata_reward.csv", "rb"), delimiter=",", skiprows=0)
+
+      predict_action_batch = self.action(state_batch)
+
+      action_distribution = [0]*22
+      for item in predict_action_batch:
+          action_distribution[item] += 1
+
+      diff_distribution = [0]*22
+      reward_sum_distribution = [0]*22
+      for iter in range(len(predict_action_batch)):
+          temp = int(abs(action_batch[iter]-predict_action_batch[iter]))
+          diff_distribution[temp] += 1
+          reward_sum_distribution[temp] += acc_reward_batch[iter]
+
+      reward_mean_distribution = np.array(reward_sum_distribution)/(np.array(diff_distribution)+1)
+      score = 0
+      for iter in range(22):
+          score += reward_mean_distribution[iter]/(iter+1)
+      return action_distribution, diff_distribution, reward_mean_distribution, score
+
+
   def choose_pole(self, filename):
       self.load_model_name = filename
       self.load_model()
@@ -257,6 +287,13 @@ class DQN():
       next_state_batch = [data[1] for data in self.minibatch]
       action_batch = [data[2] for data in self.minibatch]
       reward_batch = [data[3] for data in self.minibatch]
+
+      # restore validata in file
+      filename = time.strftime("%Y%m%d%H%M%S",time.localtime(time.time()))
+      numpy.savetxt(filename+'validata_state.csv', state_batch[self.train_size:], delimiter=',')
+      numpy.savetxt(filename+'validata_action.csv', action_batch[self.train_size:], delimiter=',')
+      acc_reward_batch = [data[4] for data in self.minibatch]
+      numpy.savetxt(filename+'validata_reward.csv', acc_reward_batch[self.train_size:], delimiter=',')
 
       y_batch = [gamma] * (self.train_size+self.valid_size)
       for iter in range(0, (self.train_size+self.valid_size)):
