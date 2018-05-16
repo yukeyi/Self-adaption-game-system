@@ -14,15 +14,17 @@ from keras.layers import Merge
 from collections import deque
 
 
-save_best_only = True
-
+save_best_only = "score"
+save = False # fake initialization
 state_batch = []
 next_state_batch = []
 action_batch = []
 reward_batch = []
 y_batch = []
+acc_reward_batch = []
 gamma = 0
 train_size = 0
+total_size = 0
 state_dim = 0
 
 
@@ -30,33 +32,62 @@ class Synchronize(keras.callbacks.Callback):
 
     def on_train_begin(self, logs={}):
         self.min_val_loss = 10
+        self.max_val_score = 0
 
     def on_batch_end(self, batch, logs={}):
-        a = 1
+        return
 
     def on_epoch_end(self, epoch, logs={}):
 
         global save_best_only
-        if(save_best_only):
-            if(self.min_val_loss > logs['val_loss']):
-                self.min_val_loss = logs['val_loss']
-                self.model.save_weights(
-                    'model/' + time.strftime("%Y%m%d%H%M%S", time.localtime(time.time())) + "epoch: " + str(epoch) + " val_loss" + str(logs['val_loss']))
-        else:
-            self.model.save_weights('model/'+time.strftime("%Y%m%d%H%M%S",time.localtime(time.time()))+"epoch: "+str(epoch))
-        #print(logs)
-
+        global save
         global state_batch
         global next_state_batch
         global action_batch
         global reward_batch
         global y_batch
+        global acc_reward_batch
         global gamma
+        global total_size
         global train_size
         global state_dim
 
-        y_batch = [gamma] * train_size
-        for iter in range(0, train_size):
+        if(save):
+            if(save_best_only == "loss"):
+                if(self.min_val_loss > logs['val_loss']):
+                    self.min_val_loss = logs['val_loss']
+                    self.model.save_weights(
+                        'model/' + time.strftime("%Y%m%d%H%M%S", time.localtime(time.time())) + "epoch: " + str(epoch) + " val_loss" + str(logs['val_loss']))
+            elif(save_best_only == "score"):
+                predict_action_batch = np.argmax(self.model.predict(np.array(state_batch[train_size:]), verbose=0), 1)
+                action_distribution = [0] * 22
+                for item in predict_action_batch:
+                    action_distribution[item] += 1
+
+                diff_distribution = [0] * 22
+                reward_sum_distribution = [0] * 22
+                for iter in range(len(predict_action_batch)):
+                    temp = int(abs(action_batch[iter+train_size] - predict_action_batch[iter]))
+                    diff_distribution[temp] += 1
+                    reward_sum_distribution[temp] += acc_reward_batch[train_size+iter]
+
+                reward_mean_distribution = np.array(reward_sum_distribution) / (np.array(diff_distribution) + 1)
+                score = 0
+                for iter in range(22):
+                    score += reward_mean_distribution[iter] / (iter + 1)
+                print(score)
+
+                if(self.max_val_score < score):
+                    self.max_val_score = score
+                    self.model.save_weights(
+                        'model/' + time.strftime("%Y%m%d%H%M%S", time.localtime(time.time())) + "epoch: " + str(epoch) + " val_score" + str(score))
+            else:
+                self.model.save_weights('model/'+time.strftime("%Y%m%d%H%M%S",time.localtime(time.time()))+"epoch: "+str(epoch))
+            #print(logs)
+
+
+        y_batch = [gamma] * total_size
+        for iter in range(0, total_size):
             if next_state_batch[iter] == 0:
                 y_batch[iter] = 0
                 next_state_batch[iter] = [0] * state_dim
@@ -93,6 +124,8 @@ class DQN():
       #self.save_model_name = 'pretrain'
       self.patience = 1000
       self.save = True
+      global save
+      save = self.save
 
       self.create_Q_network()
 
@@ -183,6 +216,7 @@ class DQN():
 
       global state_batch
       global action_batch
+      global acc_reward_batch
       state_batch = [data[0] for data in self.minibatch]
       action_batch = [data[2] for data in self.minibatch]
       acc_reward_batch = [data[4] for data in self.minibatch]
@@ -276,11 +310,14 @@ class DQN():
       global reward_batch
       global y_batch
       global gamma
+      global total_size
       global train_size
       global state_dim
+      global acc_reward_batch
 
       gamma = self.gamma
-      train_size = self.train_size+self.valid_size
+      train_size = self.train_size
+      total_size = self.train_size+self.valid_size
       state_dim = self.state_dim
 
       state_batch = [data[0] for data in self.minibatch]
