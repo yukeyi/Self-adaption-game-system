@@ -6,7 +6,7 @@ import file_loader as fl
 
 def abstract_feature(user,timestep, blanktimestep):
 
-    F_step = timestep/10
+    F_step = timestep/3
     F_blankstep = blanktimestep
 
     payM = [0]*timestep
@@ -18,44 +18,53 @@ def abstract_feature(user,timestep, blanktimestep):
                 payR.append(user[iter]['pay_money'])
                 payM[iter] += user[iter]['pay_money']
                 payT[iter] = 1
-    F_chargetime = sum(payT)/F_step
+    F_chargetime = sum(payT)*10/F_step
     F_chargemoney = sum(payM)/(sum(payT)+0.1)
-    F_chargemax = max(payM)
-    F_chargevar = np.var(payR)
+    F_chargemax = max(payM)/5
+    F_chargevar = np.std(payR)/10
     F_chargetimeTrend = [0, 0, 0]
     F_chargemoneyTrend = [0, 0, 0]
     for iter in range(3):
         F_chargetimeTrend[iter] = sum(payT[int(iter*timestep/3):int((iter+1)*timestep/3)])
         F_chargemoneyTrend[iter] = sum(payM[int(iter*timestep/3):int((iter+1)*timestep/3)])
+
+    temp1 = (sum(F_chargetimeTrend)+0.1)
+    temp2 = (sum(F_chargemoneyTrend)+0.1)
     for iter in range(3):
-        F_chargetimeTrend[iter] /= (sum(F_chargetimeTrend)+0.1)
-        F_chargemoneyTrend[iter] /= (sum(F_chargemoneyTrend)+0.1)
+        F_chargetimeTrend[iter] /= temp1
+        F_chargetimeTrend[iter] *= 10
+        F_chargemoneyTrend[iter] /= temp2
+        F_chargemoneyTrend[iter] *= 10
 
     gameD = [0]*timestep
     gameT = [0]*timestep
     gameR = []
     for iter in range(timestep):
         if iter in user:
-            gameT[iter] += user[iter]['online_time']
-            gameR.append(user[iter]['online_time'])
+            gameT[iter] += np.log(user[iter]['online_time']+1)
+            gameR.append(np.log(user[iter]['online_time']+1))
             gameD[iter] = 1
-    F_gameday = sum(gameD)/F_step
+    F_gameday = sum(gameD)*10/F_step
     F_gameavertime = sum(gameT)/sum(gameD)
-    F_gamevar = np.var(gameR)
+    F_gamevar = np.std(gameR)
     F_gamemax = max(gameR)
     F_shortgameTime = 0
     F_longgameTime = 0
     for item in gameR:
-        if(item < 5):
+        #print(item)
+        if(item < 2):
             F_shortgameTime += 1
-        elif(item > 1000):
+        elif(item > 5):
             F_longgameTime += 1
     F_lastgame = gameT[-3:]
     F_gametrend = [0,0,0]
     for iter in range(3):
         F_gametrend[iter] = sum(gameT[int(iter*timestep/3):int((iter+1)*timestep/3)])
+
+    temp = (sum(F_gametrend)+0.1)
     for iter in range(3):
-        F_gametrend[iter] /= (sum(F_gametrend)+0.1)
+        F_gametrend[iter] /= temp
+        F_gametrend[iter] *= 10
 
     vipD = 0
     vipR = []
@@ -67,18 +76,18 @@ def abstract_feature(user,timestep, blanktimestep):
             diamondR.append(user[iter]['diamond'])
             cannonR.append(user[iter]['max_cannon'])
             vipD += 1
-    F_vipLast = vipR[-1]
-    F_vipaver = sum(vipR)/vipD
-    F_vipvar = np.var(vipR)
-    F_vipmax = max(vipR)
-    F_diamondLast = diamondR[-1]
-    F_diamondaver = sum(diamondR)/vipD
-    F_diamondvar = np.var(diamondR)
-    F_diamondmax = max(diamondR)
-    F_cannonLast = cannonR[-1]
-    F_cannonaver = sum(cannonR)/vipD
-    F_cannonvar = np.var(cannonR)
-    F_cannonmax = max(cannonR)
+    F_vipLast = np.sqrt(vipR[-1])
+    F_vipaver = np.sqrt(sum(vipR)/vipD)
+    F_vipvar = np.sqrt(np.std(vipR))
+    F_vipmax = np.sqrt(max(vipR))
+    F_diamondLast = np.sqrt(diamondR[-1])
+    F_diamondaver = np.sqrt(sum(diamondR)/vipD)
+    F_diamondvar = np.sqrt(np.std(diamondR))
+    F_diamondmax = np.sqrt(max(diamondR))
+    F_cannonLast = np.sqrt(cannonR[-1])
+    F_cannonaver = np.sqrt(sum(cannonR)/vipD)
+    F_cannonvar = np.sqrt(np.std(cannonR))
+    F_cannonmax = np.sqrt(max(cannonR))
 
 
     uptime = 0
@@ -109,9 +118,7 @@ def abstract_feature(user,timestep, blanktimestep):
 
             totaltime += len(user[iter]['gold_seq'])-1
 
-    F_uprate = uptime/(totaltime+1) * 3
-    F_contDowntime /= 3
-    F_contUptime /= 3
+    F_uprate = uptime/(totaltime+1) * 10
 
     for iter in range(timestep-1,-1,-1):
         if iter in user:
@@ -122,14 +129,16 @@ def abstract_feature(user,timestep, blanktimestep):
     gold_leftR = []
     for iter in range(timestep):
         if iter in user:
-            gold_leftR.append(user[iter]['gold_left'])
-    F_gold_left_var = sum(gold_leftR)/vipD
-    F_gold_left_aver = np.var(gold_leftR)
+            gold_leftR.append(np.log(user[iter]['gold_left']+1.0))
+    F_gold_left_aver = sum(gold_leftR)/vipD
+    F_gold_left_var = np.std(gold_leftR)
     F_goldtrend = [0]*10
     for iter in range(10):
         F_goldtrend[iter] = sum(gold_data[int(iter*len(gold_data)/10):int((iter+1)*len(gold_data)/10)])
+    temp = (sum(F_goldtrend)+0.1)
     for iter in range(10):
-        F_goldtrend[iter] /= (sum(F_goldtrend)+0.1)
+        F_goldtrend[iter] /= temp
+        F_goldtrend[iter] *= 30
 
 
     feature = [
@@ -174,9 +183,9 @@ def compute_state(user):
 
 def compute_reward(user):
     alpha1 = 1
-    alpha2 = 0.05
-    alpha3 = 0.2
-    alpha4 = 0.3
+    alpha2 = 2
+    alpha3 = 3
+    alpha4 = 0.5
 
     rewardlist = []
 
@@ -209,9 +218,10 @@ def compute_reward(user):
         chargemoney = np.log(chargemoney+1.0)
 
         rewardlist.append(alpha1*activedays + alpha2*activetime + alpha3*chargemoney)
+        #print([alpha1*activedays,alpha2*activetime,alpha3*chargemoney])
 
         if(iter == len(online)-1):
-            futurereward = 0
+            #print(rewardlist)
             if(np.max(rewardlist) == rewardlist[-1]):
                 futurereward = sum(rewardlist)
             else:
@@ -224,18 +234,46 @@ def compute_reward(user):
                 #print(futurereward)
             assert (futurereward >= 0)
             rewardlist[-1] += alpha4 * futurereward
+            #print(alpha4 * futurereward)
 
+    # rewardNormalization
+    for iter in range(len(rewardlist)):
+        rewardlist[iter] /= 50
+
+    #print(rewardlist)
     return rewardlist
 
 
 # check point: -1 -0.9 -0.8 ... 0.9 1
-def convert_action(num):
-    if(num < -1):
-        return 0
+#count = 0
+#distrib = [0]*14
+def convert_action(num, temp):
+    #global count
+    #if(num < -20):
+    #    count+=1
+    #    print(count)
+    if(num < -27):
+        add = 0
     elif(num > 1):
-        return 21
+        add = 29
     else:
-        return int((num+1.1)*10)
+        add = int(num+28)
+    if(temp > 0):
+        add += 30
+    else:
+        add = 29-add
+
+    add = int(add/2)
+    if(add >=27):
+        add = 13
+    elif(add >= 21):
+        add = 12
+    elif(add >= 11):
+        add = 11
+
+    #distrib[add]+=1
+    #print(distrib)
+    return add
 
 def compute_action(user):
     actionlist = []
@@ -262,31 +300,34 @@ def compute_action(user):
             if iter3 in user:
                 gold_data += user[iter3]['gold_seq']
                 gold_pay += user[iter3]['gold_pay']
-        action = (np.exp(gold_data[-1])-np.exp(gold_data[0])-gold_pay) / np.exp(maxgold_before)
-        actionlist.append(convert_action(action))
+
+        temp = (np.exp(gold_data[-1])-np.exp(gold_data[0])-gold_pay)
+        action = np.log((abs(temp)+1) / (np.exp(maxgold_before)+1))
+        #print(action)
+        actionlist.append(convert_action(action, temp))
 
     return actionlist
 
 
+'''
 def action_distribution(data):
     #### test maxnum and minnum ####
     maxnum = 0
     minnum = 0
     for user in data:
         temp = compute_action(user)
-        tempmax = max(temp)
-        tempmin = min(temp)
-        if(tempmax>1):
-            print(tempmax)
-        if(tempmin<-10):
-            print(tempmin)
-        maxnum = max(maxnum,tempmax)
-        minnum = min(minnum,tempmin)
-        if(max(temp)>1):
-            print()
+        if(temp != []):
+            tempmax = max(temp)
+            tempmin = min(temp)
+            if(tempmax>0):
+                print(tempmax)
+            #if(tempmin<-10):
+            #    print(tempmin)
+            maxnum = max(maxnum,tempmax)
+            minnum = min(minnum,tempmin)
     print(maxnum)
     print(minnum)
-
+    return
     #### test macro distribution ####
     dist = [0]*22
     for user in data:
@@ -306,6 +347,4 @@ def action_distribution(data):
                 dist[int((item+1)*10)]+=1
     print(dist)
     return 1
-
-def rewardNormalization(data):
-    return
+'''

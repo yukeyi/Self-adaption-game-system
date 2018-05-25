@@ -52,7 +52,7 @@ def load_data():
 
             if(find == 0):
                 count+=1
-                print(count)
+                #print(count)
                 person = {}
                 person['id'] = temp2[0]
                 person_oneday = {}

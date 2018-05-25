@@ -138,21 +138,24 @@ class DQN():
       labels = np.array([[1,2],[2,3],[9,3],[7,4]])
       self.model.fit(data, labels, epochs=10, batch_size=self.batch_size)
       '''
-
       self.get_data()
-
+      #self.show_data()
       random.seed(time.time())
       self.minibatch = random.sample(self.replay_buffer, self.train_size+self.valid_size)
 
 
   def get_data(self):
       self.data = fl.load_data()
+      #pp.action_distribution(self.data)
       for user in self.data:
           statelist = pp.compute_state(user)
           actionlist = pp.compute_action(user)
-          assert(len(statelist) == len(actionlist)+1)
+          #assert(len(statelist) == len(actionlist)+1)
           rewardlist = pp.compute_reward(user)
-          assert (len(rewardlist) == len(actionlist))
+          #assert (len(rewardlist) == len(actionlist))
+
+          for iter in range(0,len(actionlist)):
+              self.replay_buffer.append([statelist[iter],statelist[iter+1],actionlist[iter],rewardlist[iter]])
 
       return
 
@@ -176,7 +179,6 @@ class DQN():
       for iter in range(0,len(actionlist)):
               self.replay_buffer.append([statelist[iter],statelist[iter+1],actionlist[iter],rewardlist[iter],accumulate_rewardlist[iter],user['id'],iter])
 
-      pp.rewardNormalization(self.replay_buffer)
       #print(len(self.replay_buffer))
       return
 
@@ -387,13 +389,16 @@ class DQN():
           self.save_model()
 
   def show_data(self):
-      f1 = open('state_data', 'a')
-      f2 = open('reward_data','a')
+      f1 = open('state_data', 'w')
+      f2 = open('reward_data','w')
       for item in self.replay_buffer:
           f1.write(str(item[0]))
           f1.write('\n')
           f2.write(str(item[3]))
           f2.write('\n')
+
+      f1.close()
+      f2.close()
 
   def explo_greedy_action(self,states):
       return
