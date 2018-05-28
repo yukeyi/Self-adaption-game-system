@@ -9,11 +9,11 @@ def convert(st):
     else:
         return int(st)
 
-def load_data():
+def load_data(fromnum, tonum):
     data = []
     count = 0
     for day in range(30):
-        f = open('3-'+str(day+1)+'small.log', 'r')
+        f = open('3-'+str(day+1)+'.log', 'r')
         single_day_data = f.readlines()
         for iter in range(0,len(single_day_data)):
             temp1 = single_day_data[iter].split(';')
@@ -30,7 +30,7 @@ def load_data():
                     if(i != 0 and i != len(temp2)-1):
                         gold_pay += temp2[i+1]-temp2[i-1]
             #print(temp2[0])
-            if(temp2[0]>150000):
+            if(temp2[0]>tonum or temp2[0]<fromnum):
                 continue
             find = 0
             for person in data:

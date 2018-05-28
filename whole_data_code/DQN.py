@@ -16,12 +16,20 @@ from collections import deque
 
 save_best_only = "score"
 save = False # fake initialization
+
 state_batch = []
 next_state_batch = []
 action_batch = []
 reward_batch = []
 y_batch = []
+V_state_batch = []
+V_next_state_batch = []
+V_action_batch = []
+V_reward_batch = []
+V_y_batch = []
+
 acc_reward_batch = []
+V_acc_reward_batch = []
 gamma = 0
 train_size = 0
 total_size = 0
@@ -31,7 +39,7 @@ state_dim = 0
 class Synchronize(keras.callbacks.Callback):
 
     def on_train_begin(self, logs={}):
-        self.min_val_loss = 10
+        self.min_val_loss = 100000
         self.max_val_score = 0
 
     def on_batch_end(self, batch, logs={}):
@@ -46,7 +54,13 @@ class Synchronize(keras.callbacks.Callback):
         global action_batch
         global reward_batch
         global y_batch
+        global V_state_batch
+        global V_next_state_batch
+        global V_action_batch
+        global V_reward_batch
+        global V_y_batch
         global acc_reward_batch
+        global V_acc_reward_batch
         global gamma
         global total_size
         global train_size
@@ -59,26 +73,33 @@ class Synchronize(keras.callbacks.Callback):
                     self.model.save_weights(
                         'model/' + time.strftime("%Y%m%d%H%M%S", time.localtime(time.time())) + "epoch: " + str(epoch) + " val_loss" + str(logs['val_loss']))
             elif(save_best_only == "score"):
-                predict_action_batch = np.argmax(self.model.predict(np.array(state_batch[train_size:]), verbose=0), 1)
-                action_distribution = [0] * 22
+                predict_action_batch = np.argmax(self.model.predict(np.array(V_state_batch), verbose=0), 1)
+                action_distribution = [0] * 14
                 for item in predict_action_batch:
                     action_distribution[item] += 1
 
-                diff_distribution = [0] * 22
-                reward_sum_distribution = [0] * 22
+                diff_distribution = [0] * 14
+                reward_sum_distribution = [0] * 14
                 for iter in range(len(predict_action_batch)):
-                    temp = int(abs(action_batch[iter+train_size] - predict_action_batch[iter]))
+                    temp = int(abs(V_action_batch[iter] - predict_action_batch[iter]))
                     diff_distribution[temp] += 1
-                    reward_sum_distribution[temp] += acc_reward_batch[train_size+iter]
+                    reward_sum_distribution[temp] += V_acc_reward_batch[iter]
 
                 reward_mean_distribution = np.array(reward_sum_distribution) / (np.array(diff_distribution) + 1)
                 score = 0
-                for iter in range(22):
+                for iter in range(14):
                     score += reward_mean_distribution[iter] / (iter + 1)
+
+                print(action_distribution)
+                #print(diff_distribution)
+                #print(reward_mean_distribution)
                 print(score)
 
                 if(self.max_val_score < score):
-                    self.max_val_score = score
+                    if (self.max_val_score == 0):
+                        self.max_val_score = score
+                    else:
+                        self.max_val_score = min(score,self.max_val_score+0.1)
                     self.model.save_weights(
                         'model/' + time.strftime("%Y%m%d%H%M%S", time.localtime(time.time())) + "epoch: " + str(epoch) + " val_score" + str(score))
             else:
@@ -86,14 +107,13 @@ class Synchronize(keras.callbacks.Callback):
             #print(logs)
 
 
-        y_batch = [gamma] * total_size
-        for iter in range(0, total_size):
-            if next_state_batch[iter] == 0:
-                y_batch[iter] = 0
-                next_state_batch[iter] = [0] * state_dim
+        y_batch = [gamma] * train_size
         Q_value_batch = np.max(self.model.predict(np.array(next_state_batch), verbose=0), 1)
         y_batch = y_batch * Q_value_batch + reward_batch
-        #print(y_batch[0:3])
+
+        V_y_batch = [gamma] * (total_size-train_size)
+        Q_value_batch = np.max(self.model.predict(np.array(V_next_state_batch), verbose=0), 1)
+        V_y_batch = V_y_batch * Q_value_batch + V_reward_batch
 
 
 
@@ -103,30 +123,32 @@ class DQN():
   # DQN Agent
   def __init__(self):
       # init experience replay
-      self.replay_buffer = deque()
+      self.train_replay_buffer = deque()
+      self.valid_replay_buffer = []
 
       # init some parameters
       self.time_step = 0
-      self.state_dim = 23
-      self.action_dim = 22
+      self.state_dim = 54
+      self.action_dim = 14
       self.layer1_dim = 32
       self.layer2_dim = 64
       self.layer3_dim = 32
-      self.data = []
-      self.learning_rate = 0.001
+      self.training_data = []
+      self.valid_data = []
+      self.learning_rate = 0.00001
       self.batch_size = 32
-      self.train_size = 48000
-      self.valid_size = 5824
+      self.train_size = 0
+      self.valid_size = 0
       self.gamma = 0.8
-      self.epoch = 1000
+      self.epoch = 100
       self.dropout_rate = 0
       self.pretrain = False
-      self.log_filepath = 'log/AdamWhole/'+time.strftime("%Y%m%d%H%M%S",time.localtime(time.time())) #/tmp/DQN_log_SGD_0.05_NoPretrain'
+      self.log_filepath = 'log/Adam20/'+time.strftime("%Y%m%d%H%M%S",time.localtime(time.time())) #/tmp/DQN_log_SGD_0.05_NoPretrain'
       self.tensorboard = True
       self.optimizer = 'adam'
       self.load_model_name = ''
       #self.save_model_name = 'pretrain'
-      self.patience = 1000
+      self.patience = 100
       self.save = True
       global save
       save = self.save
@@ -141,45 +163,50 @@ class DQN():
       self.get_data()
       #self.show_data()
       random.seed(time.time())
-      self.minibatch = random.sample(self.replay_buffer, self.train_size+self.valid_size)
+      self.minibatch = random.sample(self.train_replay_buffer, self.train_size)
 
 
   def get_data(self):
-      self.data = fl.load_data()
-      #pp.action_distribution(self.data)
-      for user in self.data:
+      self.training_data = fl.load_data(0, 400000)
+
+      for user in self.training_data:
           statelist = pp.compute_state(user)
           actionlist = pp.compute_action(user)
           #assert(len(statelist) == len(actionlist)+1)
           rewardlist = pp.compute_reward(user)
           #assert (len(rewardlist) == len(actionlist))
 
+          accumulate_rewardlist = copy.deepcopy(rewardlist)
+          for iter in range(len(rewardlist)-2,-1,-1):
+              accumulate_rewardlist[iter] += self.gamma*accumulate_rewardlist[iter+1]
+
           for iter in range(0,len(actionlist)):
-              self.replay_buffer.append([statelist[iter],statelist[iter+1],actionlist[iter],rewardlist[iter]])
+              self.train_replay_buffer.append(copy.deepcopy([statelist[iter],statelist[iter+1],actionlist[iter],rewardlist[iter],accumulate_rewardlist[iter],user['id'],iter]))
 
-      return
+      self.train_size = ((int)(len(self.train_replay_buffer)/self.batch_size))*self.batch_size
+      print("-------------training size-------------")
+      print(self.train_size)
 
-      accumulate_rewardlist = copy.deepcopy(rewardlist)
-      for iter in range(len(rewardlist)-2,-1,-1):
-          accumulate_rewardlist[iter] += self.gamma*accumulate_rewardlist[iter+1]
-      statelist = []
-      length = len(user['money_seq'])
-      for timestep in range(10, length + 1, 10):
-          statelist.append(pp.abstract_feature(user, timestep))
 
-      # assert (len(actionlist) == len(rewardlist) and len(actionlist) == len(statelist))
-      statelist.append(0)
+      self.valid_data = fl.load_data(400000, 420000)
 
-      #if(user['id']== 136761):
-      #  print(user['id'])
-      #  print(user['active_days'])
-      #  print(user['online_minutes'])
-      #  print(accumulate_rewardlist)
+      for user in self.valid_data:
+          statelist = pp.compute_state(user)
+          actionlist = pp.compute_action(user)
+          #assert(len(statelist) == len(actionlist)+1)
+          rewardlist = pp.compute_reward(user)
+          #assert (len(rewardlist) == len(actionlist))
 
-      for iter in range(0,len(actionlist)):
-              self.replay_buffer.append([statelist[iter],statelist[iter+1],actionlist[iter],rewardlist[iter],accumulate_rewardlist[iter],user['id'],iter])
+          accumulate_rewardlist = copy.deepcopy(rewardlist)
+          for iter in range(len(rewardlist)-2,-1,-1):
+              accumulate_rewardlist[iter] += self.gamma*accumulate_rewardlist[iter+1]
 
-      #print(len(self.replay_buffer))
+          for iter in range(0,len(actionlist)):
+              self.valid_replay_buffer.append(copy.deepcopy([statelist[iter],statelist[iter+1],actionlist[iter],rewardlist[iter],accumulate_rewardlist[iter],user['id'],iter]))
+
+      self.valid_size = ((int)(len(self.valid_replay_buffer)/self.batch_size))*self.batch_size
+      print("-------------valid size-------------")
+      print(self.valid_size)
       return
 
   def create_Q_network(self):
@@ -319,17 +346,24 @@ class DQN():
 
   def train_Q_network(self):
 
-      #print(len(self.replay_buffer))
       global state_batch
       global next_state_batch
       global action_batch
       global reward_batch
       global y_batch
+
+      global V_state_batch
+      global V_next_state_batch
+      global V_action_batch
+      global V_reward_batch
+      global V_y_batch
+
       global gamma
       global total_size
       global train_size
       global state_dim
       global acc_reward_batch
+      global V_acc_reward_batch
 
       gamma = self.gamma
       train_size = self.train_size
@@ -340,40 +374,47 @@ class DQN():
       next_state_batch = [data[1] for data in self.minibatch]
       action_batch = [data[2] for data in self.minibatch]
       reward_batch = [data[3] for data in self.minibatch]
-
-      # restore validata in file
-      filename = time.strftime("%Y%m%d%H%M%S",time.localtime(time.time()))
-      numpy.savetxt(filename+'validata_state.csv', state_batch[self.train_size:], delimiter=',')
-      numpy.savetxt(filename+'validata_action.csv', action_batch[self.train_size:], delimiter=',')
       acc_reward_batch = [data[4] for data in self.minibatch]
-      numpy.savetxt(filename+'validata_reward.csv', acc_reward_batch[self.train_size:], delimiter=',')
 
-      y_batch = [gamma] * (self.train_size+self.valid_size)
-      for iter in range(0, (self.train_size+self.valid_size)):
-          if next_state_batch[iter] == 0:
-              y_batch[iter] = 0
-              next_state_batch[iter] = [0] * state_dim
+      V_state_batch = [data[0] for data in self.valid_replay_buffer[:self.valid_size]]
+      V_next_state_batch = [data[1] for data in self.valid_replay_buffer[:self.valid_size]]
+      V_action_batch = [data[2] for data in self.valid_replay_buffer[:self.valid_size]]
+      V_reward_batch = [data[3] for data in self.valid_replay_buffer[:self.valid_size]]
+      V_acc_reward_batch = [data[4] for data in self.valid_replay_buffer[:self.valid_size]]
+
+
+      y_batch = [gamma] * (self.train_size)
       Q_value_batch = np.max(self.model.predict(np.array(next_state_batch), verbose=0), 1)
       y_batch = y_batch * Q_value_batch + reward_batch
 
+      V_y_batch = [gamma] * (self.valid_size)
+      Q_value_batch = np.max(self.model.predict(np.array(V_next_state_batch), verbose=0), 1)
+      V_y_batch = V_y_batch * Q_value_batch + V_reward_batch
+
       if(self.pretrain == True):
-          for iter in range(self.train_size+self.valid_size):
+          for iter in range(self.train_size):
               y_batch[iter] = 0
           self.epoch = 10
           self.model.fit(np.array(state_batch), np.transpose([action_batch, y_batch]), verbose=1, epochs=self.epoch, batch_size=self.batch_size)
           self.save_model()
           return
 
-      #print(self.evaluate())
       self.load_model()
-      print(self.evaluate())
+      #print(self.evaluate())
+
 
       if(self.tensorboard):
           tb_cb = keras.callbacks.TensorBoard(log_dir=self.log_filepath, write_images=1, histogram_freq=1)
           synchro_cb = Synchronize()
+          self.model.fit(np.array(state_batch),
+                         np.transpose([action_batch, y_batch]),
+                         validation_data=(V_state_batch, np.transpose([V_action_batch, V_y_batch])),
+                         callbacks=[tb_cb, synchro_cb], verbose=2, epochs=self.epoch, batch_size=self.batch_size)
+      '''
+      if(self.tensorboard):
+          tb_cb = keras.callbacks.TensorBoard(log_dir=self.log_filepath, write_images=1, histogram_freq=1)
+          synchro_cb = Synchronize()
           es_cb = keras.callbacks.EarlyStopping(monitor='val_loss', patience=self.patience, verbose=0, mode='min')
-          #sv_cb = keras.callbacks.ModelCheckpoint('model/'+time.strftime("%Y%m%d%H%M%S",time.localtime(time.time())), monitor='val_loss', verbose=1, save_best_only=False,
-          #                                        save_weights_only=False, mode='min', period=1)
           self.model.fit(np.array(state_batch[:self.train_size]),
                          np.transpose([action_batch[:self.train_size], y_batch[:self.train_size]]), validation_data=(
               state_batch[self.train_size:], np.transpose([action_batch[self.train_size:], y_batch[self.train_size:]])),
@@ -385,13 +426,14 @@ class DQN():
                          np.transpose([action_batch[:self.train_size], y_batch[:self.train_size]]), validation_data=(
               state_batch[self.train_size:], np.transpose([action_batch[self.train_size:], y_batch[self.train_size:]])),
                          callbacks=[synchro_cb, es_cb], verbose=2, epochs=self.epoch, batch_size=self.batch_size)
+      '''
       if (self.save):
           self.save_model()
 
   def show_data(self):
       f1 = open('state_data', 'w')
       f2 = open('reward_data','w')
-      for item in self.replay_buffer:
+      for item in self.train_replay_buffer:
           f1.write(str(item[0]))
           f1.write('\n')
           f2.write(str(item[3]))

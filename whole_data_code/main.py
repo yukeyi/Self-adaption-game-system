@@ -8,7 +8,7 @@ agent = DQN()
 #agent.show_data()
 
 '''training network'''
-#agent.train_Q_network()
+agent.train_Q_network()
 
 '''get test score on whole dataset or only validation dataset'''
 '''

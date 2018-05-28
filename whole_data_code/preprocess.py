@@ -4,7 +4,7 @@ import math
 import numpy as np
 import file_loader as fl
 
-def abstract_feature(user,timestep, blanktimestep):
+def abstract_feature(user, timestep, blanktimestep):
 
     F_step = timestep/3
     F_blankstep = blanktimestep
@@ -238,7 +238,9 @@ def compute_reward(user):
 
     # rewardNormalization
     for iter in range(len(rewardlist)):
-        rewardlist[iter] /= 50
+        rewardlist[iter] /= 100
+        if(rewardlist[iter]>2):
+            rewardlist[iter] = 2
 
     #print(rewardlist)
     return rewardlist
