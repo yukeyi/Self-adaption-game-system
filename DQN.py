@@ -27,6 +27,7 @@ train_size = 0
 total_size = 0
 state_dim = 0
 
+fscore = open('score.log', 'a')
 
 class Synchronize(keras.callbacks.Callback):
 
@@ -76,6 +77,8 @@ class Synchronize(keras.callbacks.Callback):
                 for iter in range(22):
                     score += reward_mean_distribution[iter] / (iter + 1)
                 print(score)
+                fscore.write(str(score))
+                fscore.write('\n')
 
                 if(self.max_val_score < score):
                     self.max_val_score = score
@@ -211,8 +214,9 @@ class DQN():
               self.epoch) + " final")
 
   def metrics_test(self, filename):
-      self.load_model_name = filename
-      self.load_model()
+      if (filename != "random" and filename != "greedy"):
+          self.load_model_name = filename
+          self.load_model()
 
       global state_batch
       global action_batch
@@ -221,7 +225,15 @@ class DQN():
       action_batch = [data[2] for data in self.minibatch]
       acc_reward_batch = [data[4] for data in self.minibatch]
 
-      predict_action_batch = self.action(state_batch)
+      if(filename == "random"):
+          predict_action_batch = [0]*len(state_batch)
+          random.seed(time.time())
+          for iter in range(len(predict_action_batch)):
+              predict_action_batch[iter] = random.randint(0,21)
+      elif(filename == "greedy"):
+          predict_action_batch = [18] * len(state_batch)
+      else:
+           predict_action_batch = self.action(state_batch)
 
       action_distribution = [0]*22
       for item in predict_action_batch:
@@ -330,6 +342,8 @@ class DQN():
       numpy.savetxt(filename+'validata_state.csv', state_batch[self.train_size:], delimiter=',')
       numpy.savetxt(filename+'validata_action.csv', action_batch[self.train_size:], delimiter=',')
       acc_reward_batch = [data[4] for data in self.minibatch]
+      print("average acc_reward_batch")
+      print(sum(acc_reward_batch)/len(acc_reward_batch))
       numpy.savetxt(filename+'validata_reward.csv', acc_reward_batch[self.train_size:], delimiter=',')
 
       y_batch = [gamma] * (self.train_size+self.valid_size)
@@ -351,6 +365,8 @@ class DQN():
       #print(self.evaluate())
       self.load_model()
       print(self.evaluate())
+
+      print(self.metrics_test('greedy'))
 
       if(self.tensorboard):
           tb_cb = keras.callbacks.TensorBoard(log_dir=self.log_filepath, write_images=1, histogram_freq=1)

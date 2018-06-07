@@ -253,34 +253,43 @@ class DQN():
           'model/' + time.strftime("%Y%m%d%H%M%S", time.localtime(time.time())) + "epoch: " + str(
               self.epoch) + " final")
 
-  def metrics_test(self, filename):
-      self.load_model_name = filename
-      self.load_model()
 
-      global state_batch
-      global action_batch
-      global acc_reward_batch
-      state_batch = [data[0] for data in self.minibatch]
-      action_batch = [data[2] for data in self.minibatch]
-      acc_reward_batch = [data[4] for data in self.minibatch]
+  def metrics_test(self, filename, greedy_point = 0):
 
-      predict_action_batch = self.action(state_batch)
+      if (filename != "random" and filename != "greedy"):
+          self.load_model_name = filename
+          self.load_model()
 
-      action_distribution = [0]*22
+      global V_state_batch
+      global V_action_batch
+      global V_acc_reward_batch
+
+      if(filename == "random"):
+          predict_action_batch = [0]*len(V_state_batch)
+          random.seed(time.time())
+          for iter in range(len(predict_action_batch)):
+              predict_action_batch[iter] = random.randint(0,13)
+      elif(filename == "greedy"):
+          predict_action_batch = [greedy_point] * len(V_state_batch)
+      else:
+          predict_action_batch = self.action(V_state_batch)
+
+      action_distribution = [0]*14
       for item in predict_action_batch:
           action_distribution[item] += 1
 
-      diff_distribution = [0]*22
-      reward_sum_distribution = [0]*22
+      diff_distribution = [0] * 14
+      reward_sum_distribution = [0] * 14
       for iter in range(len(predict_action_batch)):
-          temp = abs(action_batch[iter]-predict_action_batch[iter])
+          temp = int(abs(V_action_batch[iter] - predict_action_batch[iter]))
           diff_distribution[temp] += 1
-          reward_sum_distribution[temp] += acc_reward_batch[iter]
+          reward_sum_distribution[temp] += V_acc_reward_batch[iter]
 
-      reward_mean_distribution = np.array(reward_sum_distribution)/(np.array(diff_distribution)+1)
+      reward_mean_distribution = np.array(reward_sum_distribution) / (np.array(diff_distribution) + 1)
       score = 0
-      for iter in range(22):
-          score += reward_mean_distribution[iter]/(iter+1)
+      for iter in range(14):
+          score += reward_mean_distribution[iter] / (iter + 1)
+
       return action_distribution, diff_distribution, reward_mean_distribution, score
 
 
@@ -382,6 +391,8 @@ class DQN():
       V_reward_batch = [data[3] for data in self.valid_replay_buffer[:self.valid_size]]
       V_acc_reward_batch = [data[4] for data in self.valid_replay_buffer[:self.valid_size]]
 
+      print("average acc_reward_batch")
+      print(sum(V_acc_reward_batch)/len(V_acc_reward_batch))
 
       y_batch = [gamma] * (self.train_size)
       Q_value_batch = np.max(self.model.predict(np.array(next_state_batch), verbose=0), 1)
@@ -402,6 +413,9 @@ class DQN():
       self.load_model()
       #print(self.evaluate())
 
+      #for i in range(14):
+      #print(self.metrics_test('20180527211650epoch: 74 val_score2.8431299229', 0))
+      #return
 
       if(self.tensorboard):
           tb_cb = keras.callbacks.TensorBoard(log_dir=self.log_filepath, write_images=1, histogram_freq=1)

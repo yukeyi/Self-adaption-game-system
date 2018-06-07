@@ -3,7 +3,6 @@ from DQN import DQN
 
 
 agent = DQN()
-
 '''decide action distribution'''
 #agent.show_data()
 
